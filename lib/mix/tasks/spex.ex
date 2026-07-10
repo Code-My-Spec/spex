@@ -191,8 +191,18 @@ defmodule Mix.Tasks.Spex do
   end
 
   defp find_spex_files(files, _opts) do
-    # Specific files provided
-    Enum.filter(files, &File.exists?/1)
+    # Specific paths provided. A directory expands to every spex file under
+    # it — `mix spex test/spex/539_manage_todo_lists/` previously crashed
+    # with :eisdir because directories fell through to Code.require_file.
+    files
+    |> Enum.filter(&File.exists?/1)
+    |> Enum.flat_map(fn path ->
+      if File.dir?(path) do
+        path |> Path.join("**/*_spex.exs") |> Path.wildcard()
+      else
+        [path]
+      end
+    end)
   end
 
   defp configure_spex_mode(opts) do
