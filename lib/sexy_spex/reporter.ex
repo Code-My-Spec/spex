@@ -52,9 +52,12 @@ defmodule SexySpex.Reporter do
     Process.put(@state_key, %{state | steps: state.steps ++ [step]})
   end
 
+  # `Map.get` rather than `state.steps`: the state is gone once `clear_state/0`
+  # has run, and a reporter that raises here replaces the real failure with a
+  # KeyError about its own bookkeeping.
   defp mark_last_step_failed do
     state = Process.get(@state_key, %{})
-    case state.steps do
+    case Map.get(state, :steps, []) do
       [] -> :ok
       steps ->
         updated = List.update_at(steps, -1, &Map.put(&1, :status, "failed"))

@@ -142,11 +142,14 @@ defmodule SexySpex.DSL do
           var!(exunit_context) = context
           unquote(block)
 
-          # Check for error logs if enabled
+          # Raise and let the rescue below do the reporting. Reporting here as
+          # well cleared the reporter's state, so the rescue's own
+          # `spex_failed/3` then crashed on the empty map — and that KeyError,
+          # raised inside the rescue, replaced the error text it was meant to
+          # deliver.
           if fail_on_errors and SexySpex.ErrorCapture.has_errors?() do
             error_msg = SexySpex.ErrorCapture.format_errors()
             SexySpex.ErrorCapture.clear()
-            SexySpex.Reporter.spex_failed(@spex_name, %{message: error_msg})
             raise ExUnit.AssertionError, message: error_msg
           end
 
