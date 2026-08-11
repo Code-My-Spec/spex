@@ -195,9 +195,7 @@ defmodule SexySpex.Reporter do
       error: format_error_for_jsonl(error, stacktrace)
     }
 
-    path = Application.get_env(:sexy_spex, :jsonl_path, "spex_failures.jsonl")
-    json = Jason.encode!(failure)
-    File.write!(path, json <> "\n", [:append])
+    write_jsonl_line(failure)
   end
 
   defp format_error_for_jsonl(error, stacktrace) do
@@ -245,6 +243,18 @@ defmodule SexySpex.Reporter do
             {nil, nil}
         end
     end
+  end
+
+  # Public so `SexySpex.JsonlFormatter` writes its backstop lines in exactly
+  # this shape. Two encoders drifting apart would give a consumer two kinds of
+  # failure record to parse.
+  @doc false
+  def format_stacktrace(stacktrace), do: format_stacktrace_for_jsonl(stacktrace)
+
+  @doc false
+  def write_jsonl_line(failure) do
+    path = Application.get_env(:sexy_spex, :jsonl_path, "spex_failures.jsonl")
+    File.write!(path, Jason.encode!(failure) <> "\n", [:append])
   end
 
   defp format_stacktrace_for_jsonl(stacktrace) do

@@ -256,11 +256,14 @@ defmodule Mix.Tasks.Spex do
       |> Keyword.get_values(:formatter)
       |> Enum.map(&parse_formatter_module/1)
 
-    if Enum.empty?(formatters) do
-      [ExUnit.CLIFormatter]
-    else
-      formatters
-    end
+    base = if Enum.empty?(formatters), do: [ExUnit.CLIFormatter], else: formatters
+
+    # Always last, and always in addition to whatever was asked for. It writes
+    # nothing on its own account — it only fills in the failures the Reporter
+    # could not see, which is every failure that did not unwind through the
+    # `spex` macro's rescue. Without it the JSONL is silently shorter than the
+    # run's failure count.
+    if opts[:jsonl], do: base ++ [SexySpex.JsonlFormatter], else: base
   end
 
   defp parse_formatter_module(name) do
