@@ -27,8 +27,14 @@ defmodule SexySpex.Reporter do
   end
 
   # State management using process dictionary
-  defp init_state(spex_name) do
-    Process.put(@state_key, %{spex: spex_name, scenario: nil, steps: [], jsonl_written: false})
+  defp init_state(spex_name, file) do
+    Process.put(@state_key, %{
+      spex: spex_name,
+      scenario: nil,
+      steps: [],
+      spec_file: file,
+      jsonl_written: false
+    })
   end
 
   defp mark_jsonl_written do
@@ -72,7 +78,7 @@ defmodule SexySpex.Reporter do
   Starts reporting for a new specification.
   """
   def start_spex(name, opts \\ []) do
-    init_state(name)
+    init_state(name, opts[:file])
 
     unless quiet?() do
       IO.puts("")
@@ -191,6 +197,11 @@ defmodule SexySpex.Reporter do
       type: "failure",
       spex: state[:spex],
       scenario: state[:scenario],
+      # Separate from `error.file`, which must keep meaning where the exception
+      # was raised — a consumer prefers a `_spex.exs` stacktrace frame over
+      # this, and that ordering is what stops failures being filed against
+      # library code. Two different facts, two keys. Absent reads as before.
+      spec_file: state[:spec_file],
       steps: state[:steps] || [],
       error: format_error_for_jsonl(error, stacktrace)
     }

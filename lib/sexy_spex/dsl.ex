@@ -128,7 +128,13 @@ defmodule SexySpex.DSL do
       @spex_opts unquote(opts)
 
       test "Spex: #{unquote(name)}", context do
-        SexySpex.Reporter.start_spex(@spex_name, @spex_opts)
+        # The spec's own file, carried on the failure rather than deduced from
+        # a stacktrace. A failure raised inside a LiveView process has no frame
+        # in this file — the spec is not on that process's stack — so nothing
+        # downstream can attribute it, and it lands as "unknown". `context`
+        # already carries `:file`, so this needs nothing threaded from
+        # elsewhere.
+        SexySpex.Reporter.start_spex(@spex_name, Keyword.put(@spex_opts, :file, context[:file]))
 
         # Start error capture and clear any previous errors
         fail_on_errors = Keyword.get(@spex_opts, :fail_on_error_logs, true)
