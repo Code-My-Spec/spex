@@ -27,8 +27,14 @@ defmodule SexySpex.Reporter do
   end
 
   # State management using process dictionary
-  defp init_state(spex_name) do
-    Process.put(@state_key, %{spex: spex_name, scenario: nil, steps: [], jsonl_written: false})
+  defp init_state(spex_name, file) do
+    Process.put(@state_key, %{
+      spex: spex_name,
+      scenario: nil,
+      steps: [],
+      spec_file: file,
+      jsonl_written: false
+    })
   end
 
   defp mark_jsonl_written do
@@ -52,9 +58,12 @@ defmodule SexySpex.Reporter do
     Process.put(@state_key, %{state | steps: state.steps ++ [step]})
   end
 
+  # `Map.get` rather than `state.steps`: the state is gone once `clear_state/0`
+  # has run, and a reporter that raises here replaces the real failure with a
+  # KeyError about its own bookkeeping.
   defp mark_last_step_failed do
     state = Process.get(@state_key, %{})
-    case state.steps do
+    case Map.get(state, :steps, []) do
       [] -> :ok
       steps ->
         updated = List.update_at(steps, -1, &Map.put(&1, :status, "failed"))
@@ -69,7 +78,7 @@ defmodule SexySpex.Reporter do
   Starts reporting for a new specification.
   """
   def start_spex(name, opts \\ []) do
-    init_state(name)
+    init_state(name, opts[:file])
 
     unless quiet?() do
       IO.puts("")
@@ -188,13 +197,16 @@ defmodule SexySpex.Reporter do
       type: "failure",
       spex: state[:spex],
       scenario: state[:scenario],
+      # Separate from `error.file`, which must keep meaning where the exception
+      # was raised — a consumer prefers a `_spex.exs` stacktrace frame over
+      # this, and that ordering is what stops failures being filed against
+      # library code. Two different facts, two keys. Absent reads as before.
+      spec_file: state[:spec_file],
       steps: state[:steps] || [],
       error: format_error_for_jsonl(error, stacktrace)
     }
 
-    path = Application.get_env(:sexy_spex, :jsonl_path, "spex_failures.jsonl")
-    json = Jason.encode!(failure)
-    File.write!(path, json <> "\n", [:append])
+    write_jsonl_line(failure)
   end
 
   defp format_error_for_jsonl(error, stacktrace) do
@@ -242,6 +254,18 @@ defmodule SexySpex.Reporter do
             {nil, nil}
         end
     end
+  end
+
+  # Public so `SexySpex.JsonlFormatter` writes its backstop lines in exactly
+  # this shape. Two encoders drifting apart would give a consumer two kinds of
+  # failure record to parse.
+  @doc false
+  def format_stacktrace(stacktrace), do: format_stacktrace_for_jsonl(stacktrace)
+
+  @doc false
+  def write_jsonl_line(failure) do
+    path = Application.get_env(:sexy_spex, :jsonl_path, "spex_failures.jsonl")
+    File.write!(path, Jason.encode!(failure) <> "\n", [:append])
   end
 
   defp format_stacktrace_for_jsonl(stacktrace) do

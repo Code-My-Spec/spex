@@ -191,8 +191,18 @@ defmodule Mix.Tasks.Spex do
   end
 
   defp find_spex_files(files, _opts) do
-    # Specific files provided
-    Enum.filter(files, &File.exists?/1)
+    # Specific paths provided. A directory expands to every spex file under
+    # it — `mix spex test/spex/539_manage_todo_lists/` previously crashed
+    # with :eisdir because directories fell through to Code.require_file.
+    files
+    |> Enum.filter(&File.exists?/1)
+    |> Enum.flat_map(fn path ->
+      if File.dir?(path) do
+        path |> Path.join("**/*_spex.exs") |> Path.wildcard()
+      else
+        [path]
+      end
+    end)
   end
 
   defp configure_spex_mode(opts) do
@@ -246,11 +256,14 @@ defmodule Mix.Tasks.Spex do
       |> Keyword.get_values(:formatter)
       |> Enum.map(&parse_formatter_module/1)
 
-    if Enum.empty?(formatters) do
-      [ExUnit.CLIFormatter]
-    else
-      formatters
-    end
+    base = if Enum.empty?(formatters), do: [ExUnit.CLIFormatter], else: formatters
+
+    # Always last, and always in addition to whatever was asked for. It writes
+    # nothing on its own account — it only fills in the failures the Reporter
+    # could not see, which is every failure that did not unwind through the
+    # `spex` macro's rescue. Without it the JSONL is silently shorter than the
+    # run's failure count.
+    if opts[:jsonl], do: base ++ [SexySpex.JsonlFormatter], else: base
   end
 
   defp parse_formatter_module(name) do
