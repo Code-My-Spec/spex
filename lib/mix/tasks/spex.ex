@@ -32,6 +32,10 @@ defmodule Mix.Tasks.Spex do
       --jsonl [PATH]  Output failures as JSONL (default: spex_failures.jsonl)
       --stale         Only run spex files that have changed or reference changed modules
       --force         Force all spex files to run (use with --stale to reset)
+      --repeat-until-failure N
+                      Run up to N times, stopping at the first failure. The
+                      tool for deciding whether an intermittent failure is
+                      fixed — one green run does not answer that.
 
   ## Examples
 
@@ -45,6 +49,7 @@ defmodule Mix.Tasks.Spex do
       mix spex --trace            # Show detailed test execution
       mix spex test/spex/file.exs --trace
       mix spex --slowest 5        # Show timing for 5 slowest tests
+      mix spex --pattern "**/886_*/*_spex.exs" --repeat-until-failure 25
 
   ## Configuration
 
@@ -97,7 +102,7 @@ defmodule Mix.Tasks.Spex do
     # Pre-process args to handle --jsonl without value (convert to --jsonl=default)
     args = preprocess_jsonl_arg(args)
 
-    {opts, files, _} = OptionParser.parse(args,
+    {opts, files, invalid} = OptionParser.parse(args,
       switches: [
         only_spex: :boolean,
         pattern: :string,
@@ -111,7 +116,8 @@ defmodule Mix.Tasks.Spex do
         formatter: :keep,
         jsonl: :string,
         stale: :boolean,
-        force: :boolean
+        force: :boolean,
+        repeat_until_failure: :integer
       ],
       aliases: [
         h: :help,
@@ -123,6 +129,14 @@ defmodule Mix.Tasks.Spex do
         j: :jsonl
       ]
     )
+
+    # Refuse rather than ignore. `parse/2` drops what it does not recognise
+    # into `invalid` and carries on, so `--repeat-until-failure 25` ran the
+    # suite exactly once and reported "1 test, 0 failures" — which reads as
+    # twenty-five clean passes and was used as evidence that a flake was
+    # fixed. A flag that silently does nothing is worse than one that does not
+    # exist.
+    refuse_unknown_switches!(invalid)
 
     if opts[:help] do
       Mix.shell().info(@moduledoc)
@@ -336,6 +350,7 @@ defmodule Mix.Tasks.Spex do
     |> maybe_enable_trace(opts[:verbose])
     |> maybe_enable_trace(opts[:trace])
     |> maybe_set_slowest(opts[:slowest])
+    |> maybe_repeat(opts[:repeat_until_failure])
   end
 
   defp maybe_enable_trace(config, true), do: Keyword.put(config, :trace, true)
@@ -345,6 +360,27 @@ defmodule Mix.Tasks.Spex do
     do: Keyword.put(config, :slowest, n)
 
   defp maybe_set_slowest(config, _), do: config
+
+  defp maybe_repeat(config, n) when is_integer(n) and n > 0,
+    do: Keyword.put(config, :repeat_until_failure, n)
+
+  defp maybe_repeat(config, _), do: config
+
+  defp refuse_unknown_switches!([]), do: :ok
+
+  defp refuse_unknown_switches!(invalid) do
+    names = Enum.map_join(invalid, ", ", fn {name, _value} -> name end)
+
+    Mix.shell().error("""
+    Unknown option(s): #{names}
+
+    Run `mix spex --help` for the options this task takes. Nothing was run —
+    an option that is quietly dropped makes the run look like it did what you
+    asked.
+    """)
+
+    System.halt(1)
+  end
 
   # When the :spex compiler (from client_utils) already compiled these files,
   # suppress "redefining module" warnings — we still need Code.require_file
