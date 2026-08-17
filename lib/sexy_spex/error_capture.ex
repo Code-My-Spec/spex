@@ -90,6 +90,13 @@ defmodule SexySpex.ErrorCapture do
 
   @doc """
   Formats captured errors for display.
+
+  Each line names the process and the call site that logged it, because the
+  handler is installed on `:logger` globally: it captures every process in the
+  VM, and the spex that raises is only the one that happened to be running.
+  A task left polling by an earlier spex fails an innocent later one, which
+  reads as "this spex is flaky" and is unreproducible in isolation — the pid
+  and the mfa are what turn that back into something chaseable.
   """
   def format_errors do
     errors = get_errors()
@@ -98,11 +105,28 @@ defmodule SexySpex.ErrorCapture do
     else
       header = "\n❌ #{length(errors)} error(s) logged during test execution:\n"
       error_lines = Enum.map(errors, fn error ->
-        "  • [#{error.level}] #{error.message}"
+        "  • [#{error.level}] #{origin(error)}#{error.message}"
       end)
       header <> Enum.join(error_lines, "\n")
     end
   end
+
+  defp origin(%{meta: meta}) when is_map(meta) do
+    [Map.get(meta, :pid), mfa(meta)]
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> ""
+      parts -> Enum.map_join(parts, " ", &to_text/1) <> " "
+    end
+  end
+
+  defp origin(_error), do: ""
+
+  defp mfa(%{mfa: {module, function, arity}}), do: "#{inspect(module)}.#{function}/#{arity}"
+  defp mfa(_meta), do: nil
+
+  defp to_text(text) when is_binary(text), do: text
+  defp to_text(term), do: inspect(term)
 
   @doc """
   Checks for errors and raises if any were found.
