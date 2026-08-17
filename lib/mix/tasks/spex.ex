@@ -35,7 +35,10 @@ defmodule Mix.Tasks.Spex do
       --repeat-until-failure N
                       Run up to N times, stopping at the first failure. The
                       tool for deciding whether an intermittent failure is
-                      fixed — one green run does not answer that.
+                      fixed — one green run does not answer that. Note that
+                      the summary line counts the *last* run only, so "8
+                      tests" after four repeats is not a miscount; use
+                      --trace if you want to watch each one.
 
   ## Examples
 
