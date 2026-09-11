@@ -45,6 +45,7 @@ defmodule Mix.Tasks.Spex do
       mix spex
       mix spex test/spex/user_login_spex.exs
       mix spex --pattern "**/integration_*_spex.exs"
+      mix spex --pattern criterion_3231     # no slashes/*: matched by name fragment
       mix spex --verbose
       mix spex --manual           # Interactive step-by-step mode
       mix spex --speed slow       # Slower automatic execution
@@ -204,7 +205,11 @@ defmodule Mix.Tasks.Spex do
   defp find_spex_files([], opts) do
     # No specific files provided, use pattern
     pattern = opts[:pattern] || @default_pattern
-    Path.wildcard(pattern)
+
+    case Path.wildcard(pattern) do
+      [] -> fragment_match(pattern, opts)
+      files -> files
+    end
   end
 
   defp find_spex_files(files, _opts) do
@@ -220,6 +225,26 @@ defmodule Mix.Tasks.Spex do
         [path]
       end
     end)
+  end
+
+  # `--pattern` is a glob against a path (`Path.wildcard/1`), not a search
+  # term — `--pattern criterion_3231` matches nothing because the real file
+  # lives at `test/spex/<story>/criterion_3231_..._spex.exs`, not at
+  # `./criterion_3231` relative to cwd. A caller who knows a criterion or
+  # story name and not its full generated path (the common case while
+  # writing one) needs some pattern to work.
+  #
+  # Only tried when the literal glob found nothing, and only for a pattern
+  # that does not already look like a path glob (no `/`, no `*`) — an
+  # intentional glob that legitimately matches zero files (a typo, a story
+  # not yet written) should report that, not silently search for something
+  # else instead.
+  defp fragment_match(pattern, opts) do
+    if opts[:pattern] && not String.contains?(pattern, ["/", "*"]) do
+      Path.wildcard("test/spex/**/*#{pattern}*")
+    else
+      []
+    end
   end
 
   defp configure_spex_mode(opts) do
